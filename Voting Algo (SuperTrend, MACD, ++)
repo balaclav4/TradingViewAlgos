@@ -1,0 +1,244 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © maxwelljsimons
+
+//@version=4
+
+//
+// ▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒ //
+
+strategy(title = "STMACDSTM VOTING",
+         shorttitle = "STMACD VOTING",
+         overlay = true,
+         precision = 8,
+         calc_on_order_fills = true,
+         calc_on_every_tick = true,
+         backtest_fill_limits_assumption = 0,
+         default_qty_type = strategy.percent_of_equity,
+         default_qty_value = 100,
+         initial_capital = 100000,
+         currency = currency.USD,
+         linktoseries = true)
+
+//
+// ▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒ //
+
+// === BACKTEST RANGE ===
+backTestSectionFrom = input(title = "═══════════════ FROM ═══════════════", defval = true, type = input.bool)
+
+FromMonth       = input(defval = 1, title = "Month", minval = 1)
+FromDay         = input(defval = 1, title = "Day", minval = 1)
+FromYear        = input(defval = 2019, title = "Year", minval = 2014)
+
+backTestSectionTo = input(title = "════════════════ TO ════════════════", defval = true, type = input.bool)
+ToMonth         = input(defval = 4, title = "Month", minval = 1)
+ToDay           = input(defval = 20, title = "Day", minval = 1)
+ToYear          = input(defval = 2021, title = "Year", minval = 2014)
+
+backTestPeriod() => (time > timestamp(FromYear, FromMonth, FromDay, 00, 00)) and (time < timestamp(ToYear, ToMonth, ToDay, 23, 59))
+
+//
+// ▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒ //
+
+parameterSection = input(title = "═════════════ STRATEGY ═════════════", defval = true, type = input.bool)
+// === INPUT TO SELECT POSITION ===
+positionType = input(defval="LONG", title="Position Type", options=["LONG", "SHORT"])
+
+// === INPUT TO SELECT MAX DRAWDOWN STANDARD STOP LOSS
+stopLossPercent = input(defval = 100.0, minval = 0.0, title="Standard Stop Loss")
+
+// === INPUT TO SELECT BARS BACK
+barsBack = input(title="ATR Period", defval=7)
+
+// === INPUT TO SELECT MULTPLIER FACTOR 
+multplierFactor = input(title="ATR multplierFactoriplier", step=0.1, defval=3.2)
+
+parameterSection2 = input(title = "═════════════ VMACD ═════════════", defval = true, type = input.bool)
+
+// === INPUT TO SELECT FAST SMA
+fastLength = input(title="Fast Length", type=input.integer, defval=12, minval=1)
+
+// === INPUT TO SELECT SLOW MOVING SMA
+slowLength = input(title="Slow Length", type=input.integer, defval=26)
+
+// === INPUT TO SELECT CANDLE VALUE           !!!FORCED VWAP!!!
+//macdsrc = input(title="Source", type=input.source, defval=hl2)
+
+// === INPUT TO SELECT CANDLE LENGTH
+useCurrentRes = input(true, title="Use Current Chart Resolution?")
+resCustom = input(title="Use Different Timeframe? Uncheck Box Above", defval="60")
+
+// === INPUT TO SELECT SIGNAL SMOOTHING LENGTH
+MACDLength = input(title="Signal Smoothing", type=input.integer, minval = 1, maxval = 50, defval = 11)
+
+// === INPUT TO SELECT SOURCE
+sma_source = input(title="Simple MA(Oscillator)", type=input.bool, defval=false)
+
+// === INPUT TO SELECT SIGNAL
+sma_signal = input(title="Simple MA(Signal Line)", type=input.bool, defval=false)
+
+//
+// ▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒ //
+
+//MACD BEGINS
+source = vwap[1]
+//smd = input(true, title="Show MacD & Signal Line? Also Turn Off Dots Below")
+//sd = input(true, title="Show Dots When MacD Crosses Signal Line?")
+//sh = input(true, title="Show Histogram?")
+//macd_colorChange = input(true,title="Change MacD Line Color-Signal Line Cross?")
+//hist_colorChange = input(true,title="MacD Histogram 4 Colors?")
+
+res = useCurrentRes ? timeframe.period : resCustom
+
+signalLength=input(9,minval=1)
+
+fastMA = ema(source, fastLength)
+slowMA = ema(source, slowLength)
+
+macd = fastMA - slowMA
+signal = sma(macd, signalLength)
+hist = macd - signal
+
+outMacD = security(syminfo.tickerid, res, macd)
+outSignal = security(syminfo.tickerid, res, signal)
+outHist = security(syminfo.tickerid, res, hist)
+
+// histA_IsUp = outHist > outHist[1] and outHist > 0
+// histA_IsDown = outHist < outHist[1] and outHist > 0
+// histB_IsDown = outHist < outHist[1] and outHist <= 0
+// histB_IsUp = outHist > outHist[1] and outHist <= 0
+
+//MacD Color Definitions
+macd_IsAbove = outMacD >= outSignal
+macd_IsBelow = outMacD < outSignal
+
+// plot_color = hist_colorChange ? histA_IsUp ? color.aqua : histA_IsDown ? color.blue : histB_IsDown ? color.red : histB_IsUp ? color.maroon :color.yellow :color.gray
+// macd_color = macd_colorChange ? macd_IsAbove ? color.lime : color.red : color.red
+// signal_color = macd_colorChange ? macd_IsAbove ? color.yellow : color.yellow : color.lime
+
+//circleYPosition = outSignal
+ 
+// plot(smd and outMacD ? outMacD : na, title="MACD", color = macd_color, linewidth=4)
+// plot(smd and outSignal ? outSignal : na, title="Signal Line", color=signal_color, linewidth=2)
+// //plot(sh and outHist ? outHist : na, title="Histogram", color = plot_color, style = histogram, linewidth=4)
+// plot(sd and cross(outMacD, outSignal) ? circleYPosition : na, title="Cross", style = circles, linewidth=4, color = macd_color)
+//hline(0, '0 Line', linestyle = solid, linewidth=2, color.white)
+//MACD ENDS
+
+// LOGIC TO FIND DIRECTION WHEN THERE IS TREND CHANGE ACCORDING VOLATILITY
+atr = multplierFactor * atr(barsBack)
+
+longStop = hl2[1] - atr
+longStopPrev = nz(longStop[1], longStop)
+longStop := close[1] > longStopPrev ? max(longStop, longStopPrev) : longStop
+
+shortStop = hl2[1] + atr
+shortStopPrev = nz(shortStop[1], shortStop)
+shortStop := close[1] < shortStopPrev ? min(shortStop, shortStopPrev) : shortStop
+
+direction = 1
+direction := nz(direction[1], direction)
+direction := direction == -1 and close[1] > shortStopPrev ? 1 : direction == 1 and close[1] < longStopPrev ? -1 : direction
+
+longColor = color.blue
+shortColor = color.blue
+
+var valueToPlot = 0.0
+var colorToPlot = color.white
+
+if (direction == 1 and macd_IsAbove)
+    valueToPlot := longStop
+    colorToPlot := color.green
+    
+else if (direction == 1 and macd_IsBelow)
+    valueToPlot := longStop
+    colorToPlot := color.yellow
+
+else
+    valueToPlot := shortStop
+    colorToPlot := color.red
+
+//
+// ▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒ //
+//
+// === GLOBAL VARIABLES AND FUNCTIONS TO STORE IMPORTANT CONDITIONALS TO TRAILING STOP
+
+var inLongPosition = 0
+var inShortPosition = 0
+
+candleEntryLongCondition = direction == 1 and macd_IsAbove == 1 and inLongPosition == 0 //and crossedStopLoss == false
+if candleEntryLongCondition[0] == 1 and candleEntryLongCondition[1] != 1 and inLongPosition == 0
+    inLongPosition := 1
+    inShortPosition := 0 
+
+candleCloseLongCondition = direction == -1 and macd_IsBelow == 1 and inShortPosition == 0
+if candleCloseLongCondition[0] == 1 and candleCloseLongCondition[1] != 1 and inShortPosition == 0 
+    inShortPosition := 1
+    inLongPosition := 0
+
+if (not backTestPeriod()) or (year(timenow) <= year[0] and month(timenow) <= month[0] and dayofmonth(timenow) <= dayofmonth[0])
+    strategy.close_all()
+
+var entryPrice = 0.0
+var stopLossPrice = 0.0
+var updatedEntryPrice = 0.0
+var crossedStopLoss = false
+
+hasOpenTrade() => strategy.opentrades != 0
+notHasOpenTrade() => strategy.opentrades == 0
+
+strategyClose() =>
+    if positionType == "LONG"
+        strategy.close("LONG", when=true)
+    else 
+        strategy.close("SHORT", when=true)
+
+strategyOpen() =>
+    if positionType == "LONG"
+        strategy.entry("LONG", strategy.long, when=true)
+    else 
+        strategy.entry("SHORT", strategy.short, when=true)
+
+isLong() => positionType == "LONG" ? true : false
+isShort() => positionType == "SHORT" ? true : false
+
+
+//
+// ▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒ //
+//
+// === LOGIC TO STOP IN LONG POSITION
+
+if (isLong() and backTestPeriod())
+
+    //crossedStopLoss := ((close[1] <= stopLossPrice) and crossedStopLoss[1] == false) 
+    terminateLong = hasOpenTrade() and candleCloseLongCondition //(crossedStopLoss or hasCloseLongConditional())
+
+    if (terminateLong)
+        entryPrice := 0.0
+        updatedEntryPrice := entryPrice
+        stopLossPrice := 0.0
+        strategyClose()
+    
+    startOperation = notHasOpenTrade() and candleEntryLongCondition
+
+    if(startOperation)
+        entryPrice := close[1]
+        updatedEntryPrice := entryPrice
+        stopLossPrice := entryPrice - (entryPrice * stopLossPercent) / 100
+        strategyOpen()
+
+//
+// ▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒ //
+
+// === DRAWING SHAPES     
+entryPricePlotConditinal = entryPrice == 0.0 ? na : entryPrice
+trailingStopLossPlotConditional = stopLossPrice == 0.0  ? na : stopLossPrice
+
+//plotshape(entryPricePlotConditinal, title= "Entry Price", color=color.blue, style=shape.circle, location=location.absolute, size=size.tiny)
+//plotshape(trailingStopLossPlotConditional, title= "Stop Loss", color=color.red, style=shape.circle, location=location.absolute, size=size.tiny)
+
+plot(valueToPlot == 0.0 ? na : valueToPlot, title="BuyLine", linewidth=2, color=colorToPlot)
+plotshape(candleEntryLongCondition[0] == 1 and candleEntryLongCondition [1] == 0 ? longStop : na, title="Buy", style=shape.labelup, location=location.absolute, size=size.normal, text="Buy", transp=0, textcolor = color.white, color=color.green)  
+plotshape(candleCloseLongCondition[0] == 1 and candleCloseLongCondition [1] == 0 ? shortStop : na, title="Sell", style=shape.labeldown, location=location.absolute, size=size.normal, text="Sell", transp=0, textcolor = color.white, color=color.red) 
+
+//alertcondition(candleEntryLongCondition[0] == 1 and candleEntryLongCondition [1] == 0 ? longStop : na, title="Buy", message="Buy!")
+//alertcondition(candleCloseLongCondition[0] == 1 and candleCloseLongCondition [1] == 0 ? shortStop : na, title="Sell", message="Sell!")
