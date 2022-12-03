@@ -1,0 +1,57 @@
+//@version=4
+
+// Indicator Description:   Plot a user-configurable EMA/SMA on other time frames other than 350Dtime frame.  Can use for filtering and identifying longer
+//                          term trends while viewing smaller time frames.
+
+study("2 Year Moving Average Multiplier", shorttitle="2YMA", overlay=true)
+
+// Inputs
+
+// Define all the moving averages
+maFilter2Y = security(syminfo.tickerid,"D",sma(close, 730))
+maFilter2Y5 = 5 * security(syminfo.tickerid,"D",sma(close, 730))
+
+plot(maFilter2Y, title = "2Y-MA", color = color.teal, linewidth = 1, style = plot.style_line, transp = 10)
+plot(maFilter2Y5, title = "2Y-MA x 5", color = color.red, linewidth = 1, style = plot.style_line, transp = 10)
+
+c = plot(close)
+p1 = plot(maFilter2Y, title = "2Y-MA", color = color.teal, linewidth = 1, style = plot.style_line, transp = 10)
+p2 = plot(maFilter2Y5, title = "2Y-MA x 5", color = color.red, linewidth = 1, style = plot.style_line, transp = 10)
+
+
+fill(c, p1, color = maFilter2Y > close ? color.teal : color(#1a2033))
+fill(p2, c, color = maFilter2Y5 < close ? color.red : color(#1a2033))
+//study("Pi Cycle Bitcoin top indicator", shorttitle="Pi Cycle", overlay=true)
+
+len_ma_long = input(350, minval=1, title="Long Moving Average")
+len_ma_short = input(111, minval=1, title="Short Moving Average")
+resolution = input('D', type=input.string, title="Time interval")
+is_show_ma = input(false, type=input.bool, title="Show Moving Averages ?")
+is_alert = input(true, type=input.bool, title="Send an alert on Pi Cycle Top?")
+
+ma_long = security(syminfo.tickerid, resolution, sma(close, len_ma_long)*2)
+ma_short = security(syminfo.tickerid, resolution, sma(close, len_ma_short))
+src = security(syminfo.tickerid, resolution, close)
+
+plot(is_show_ma?ma_long:na, color=color.rgb(23, 209, 255))
+plot(is_show_ma?ma_short:na, color=color.rgb(255, 65, 144))
+
+PiCycleTop = crossunder(ma_long, ma_short) ? src + (src/100 * 10) : na
+
+plotshape(PiCycleTop, style=shape.labeldown,size=size.normal, text="Pi Cycle top", color=color.red, textcolor=color.white, location=location.absolute)
+alertcondition(condition=PiCycleTop, title="Pi Cycle", message="The Pi Cycle Top has been reached, historically Bitcoin tops within 3 days of reaching this ratio, More info : https://medium.com/@positivecrypto/the-golden-ratio-multiplier-c2567401e12a")
+
+
+//study("Puell Multiple")
+
+top = input(0.5, step = 0.1)
+bottom = input(3, step = 0.1)
+miningRevenue = security("QUANDL:BCHAIN/MIREV", "D", close[1], barmerge.gaps_off, barmerge.lookahead_on)
+ma365 = security("QUANDL:BCHAIN/MIREV", "D", sma(close, 365)[1], barmerge.gaps_off, barmerge.lookahead_on)
+puellMultiple = miningRevenue / ma365
+
+//plot(puellMultiple, color=color.white)
+//hline(bottom)
+//hline(top)
+bgcolor(puellMultiple < top ? #82E0AA : puellMultiple > bottom ? #8B3030 : na, transp=45)
+barcolor(puellMultiple <top ? #82E0AA : puellMultiple > bottom ? #8B3030 : na)
